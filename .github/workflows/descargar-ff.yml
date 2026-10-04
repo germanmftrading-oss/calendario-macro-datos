@@ -1,0 +1,40 @@
+name: Descargar calendario ForexFactory
+
+on:
+  schedule:
+    - cron: "0 20 * * *"    # 22:00 hora española en verano (21:00 en invierno)
+    - cron: "30 21 * * *"   # segundo intento por si el primero falla o se retrasa
+  workflow_dispatch:        # botón "Run workflow" para lanzarlo a mano
+
+permissions:
+  contents: write
+
+jobs:
+  descargar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar de ForexFactory
+        run: |
+          for intento in 1 2 3; do
+            codigo=$(curl -sS -A "Mozilla/5.0 (calendario-macro)" -o nuevo.json -w "%{http_code}" \
+              https://nfs.faireconomy.media/ff_calendar_thisweek.json || echo "000")
+            if [ "$codigo" = "200" ] && head -c 1 nuevo.json | grep -q '\['; then
+              mv nuevo.json ff_semana.json
+              echo "Descargado correctamente"
+              exit 0
+            fi
+            echo "Intento $intento fallido (código $codigo). Espero 2 minutos..."
+            sleep 120
+          done
+          echo "No se pudo descargar ForexFactory"
+          exit 1
+
+      - name: Guardar en el repositorio
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add ff_semana.json
+          git diff --cached --quiet || git commit -m "Calendario ForexFactory $(date -u +%F)"
+          git push
